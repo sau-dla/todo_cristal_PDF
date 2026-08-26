@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generador PDF - Todo Cristal</title>
+  <meta name="description" content="Generador de presupuestos en PDF para Todo Cristal.">
+  
+  <!-- Google Fonts: Montserrat, Inter, Roboto, Lora, Cinzel -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400&family=Inter:wght@400;500;600;700;800&family=Roboto:wght@400;500;700&family=Lora:wght@400;600;700&family=Cinzel:wght@700;900&display=swap" rel="stylesheet">
+  
+  <!-- CSS Principal -->
+  <link rel="stylesheet" href="css/styles.css">
+  
+  <!-- html2pdf.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+
+  <!-- App Header / Bar -->
+  <header class="app-header">
+    <div class="app-brand">
+      <img src="assets/logo.svg" alt="TC" style="height: 28px; width: auto; filter: invert(1);">
+      <span class="brand-title">TODO CRISTAL</span>
+      <span class="brand-subtitle">— Generador PDF</span>
+    </div>
+    <div class="app-actions">
+      <button type="button" id="btn-top-download" class="btn btn-primary">
+        📄 <span class="btn-text">Descargar PDF</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Pestañas de Navegación Móvil / Tablet (Solo visibles en <= 1024px) -->
+  <nav class="mobile-view-tabs" aria-label="Navegación Móvil">
+    <button type="button" class="mobile-tab-btn active" id="tab-btn-editor">
+      ⚙️ Editor
+    </button>
+    <button type="button" class="mobile-tab-btn" id="tab-btn-preview">
+      👁️ Vista Previa PDF
+    </button>
+  </nav>
+
+  <!-- App Container Split View -->
+  <div class="app-container">
+    
+    <!-- LADO IZQUIERDO: Panel de Controles (Acordeón Desplegable - Cerrado por Defecto) -->
+    <aside class="controls-panel" id="controls-panel">
+      
+      <!-- Sección 1: Personalización del Logo y Marca -->
+      <details class="control-group">
+        <summary class="control-group-title">
+          <span>🎨 Apariencia &amp; Marca</span>
+          <span class="accordion-icon">▼</span>
+        </summary>
+        <div class="control-group-body">
+          <!-- Campo para Subir Logo Personalizado -->
+          <div class="control-field">
+            <label for="input-logo-file" class="control-label">Subir / Cambiar Logo</label>
+            <input type="file" id="input-logo-file" class="form-input" accept="image/*" style="padding: 0.35rem 0.5rem; font-size: 0.8rem;">
+            <button type="button" id="btn-reset-logo" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.3rem 0.5rem; margin-top: 0.25rem;">
+              🔄 Restaurar Logo TC por Defecto
+            </button>
+          </div>
+
+          <!-- Slider Tamaño del Logo -->
+          <div class="control-field">
+            <div class="control-field-row">
+              <label for="logo-size" class="control-label">Tamaño del Logo</label>
+              <span id="logo-size-val" class="control-value">100%</span>
+            </div>
+            <input type="range" id="logo-size" class="form-range" min="50" max="200" value="100">
+          </div>
+          
+          <!-- Slider Opacidad del Logo -->
+          <div class="control-field">
+            <div class="control-field-row">
+              <label for="logo-opacity" class="control-label">Opacidad del Logo</label>
+              <span id="logo-opacity-val" class="control-value">100%</span>
+            </div>
+            <input type="range" id="logo-opacity" class="form-range" min="10" max="100" value="100">
+          </div>
+
+          <!-- Slider Tamaño de Marca de Agua -->
+          <div class="control-field">
+            <div class="control-field-row">
+              <label for="watermark-size" class="control-label">Tamaño Marca de Agua</label>
+              <span id="watermark-size-val" class="control-value">100%</span>
+            </div>
+            <input type="range" id="watermark-size" class="form-range" min="50" max="250" value="100">
+          </div>
+
+          <!-- Slider Opacidad de la Marca de Agua -->
+          <div class="control-field">
+            <div class="control-field-row">
+              <label for="watermark-opacity" class="control-label">Opacidad Marca de Agua</label>
+              <span id="watermark-opacity-val" class="control-value">15%</span>
+            </div>
+            <input type="range" id="watermark-opacity" class="form-range" min="0" max="30" value="15">
+          </div>
+        </div>
+      </details>
+
+      <!-- Sección 2: Tipografía y Colores -->
+      <details class="control-group">
+        <summary class="control-group-title">
+          <span>✍️ Tipografía &amp; Estilos</span>
+          <span class="accordion-icon">▼</span>
+        </summary>
+        <div class="control-group-body">
+          <!-- Selector de Fuente -->
+          <div class="control-field">
+            <label for="font-family" class="control-label">Fuente del Texto</label>
+            <select id="font-family" class="form-select">
+              <option value="'Montserrat', sans-serif" selected>Montserrat (Moderna)</option>
+              <option value="'Inter', sans-serif">Inter (Limpia)</option>
+              <option value="'Roboto', sans-serif">Roboto</option>
+              <option value="'Lora', serif">Lora (Serif)</option>
+              <option value="'Cinzel', serif">Cinzel / Art Deco</option>
+              <option value="'Segoe UI', sans-serif">Segoe UI</option>
+              <option value="Arial, sans-serif">Arial</option>
+            </select>
+          </div>
+
+          <div class="control-field-row">
+            <!-- Tamaño de Fuente -->
+            <div class="control-field" style="flex: 1;">
+              <label for="font-size" class="control-label">Tamaño (px)</label>
+              <input type="number" id="font-size" class="form-input" min="10" max="24" value="14">
+            </div>
+            <!-- Color de Texto -->
+            <div class="control-field" style="flex: 1;">
+              <label for="font-color" class="control-label">Color Texto</label>
+              <input type="color" id="font-color" class="form-input form-input-color" value="#000000">
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- Sección 3: Datos del Presupuesto -->
+      <details class="control-group">
+        <summary class="control-group-title">
+          <span>📋 Encabezado del Presupuesto</span>
+          <span class="accordion-icon">▼</span>
+        </summary>
+        <div class="control-group-body">
+          <!-- Título Principal del Trabajo -->
+          <div class="control-field">
+            <label for="input-main-title" class="control-label" style="color: var(--accent-cyan); font-weight: 600;">Título Principal del Trabajo</label>
+            <input type="text" id="input-main-title" class="form-input" placeholder="Ej: Suministro de ventanas panorámicas." value="">
+          </div>
+
+          <!-- Input de Calendario -->
+          <div class="control-field">
+            <label for="input-date" class="control-label">Fecha del Presupuesto (Calendario)</label>
+            <input type="date" id="input-date" class="form-input">
+          </div>
+
+          <div class="control-field">
+            <label for="input-client" class="control-label">Presupuesto SR(a)</label>
+            <input type="text" id="input-client" class="form-input" placeholder="Nombre del cliente" value="">
+          </div>
+
+          <div class="control-field">
+            <label for="input-ci" class="control-label">C.I. / Cédula</label>
+            <input type="text" id="input-ci" class="form-input" placeholder="Número de cédula" value="">
+          </div>
+
+          <div class="control-field">
+            <label for="input-address" class="control-label">Dirección del Cliente</label>
+            <input type="text" id="input-address" class="form-input" placeholder="Dirección del cliente" value="Av. Principal, Calle 3, Edif. Cristal">
+          </div>
+        </div>
+      </details>
+
+      <!-- Sección 4: Gestión de Líneas Editables (Con Botón Ejemplo) -->
+      <details class="control-group">
+        <summary class="control-group-title">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span>📝 Ítems del Presupuesto</span>
+            <span id="items-count-badge" style="font-size: 0.75rem; background: var(--primary-color); padding: 2px 6px; border-radius: 10px; color: #fff;">0 productos</span>
+          </div>
+          <span class="accordion-icon">▼</span>
+        </summary>
+        <div class="control-group-body">
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <button type="button" id="btn-add-line" class="btn btn-secondary" style="flex: 1;">
+              ➕ Agregar Producto
+            </button>
+            <button type="button" id="btn-load-example" class="btn btn-primary" style="flex: 1; background-color: #0284c7;">
+              💡 Cargar Ejemplo
+            </button>
+          </div>
+          <div id="lines-editor-container" class="lines-editor-list">
+            <!-- Se genera dinámicamente -->
+          </div>
+        </div>
+      </details>
+
+      <!-- Sección 5: Cuadro de Pago / Abono ($) -->
+      <details class="control-group">
+        <summary class="control-group-title">
+          <span>💰 Pago &amp; Adelanto ($)</span>
+          <span class="accordion-icon">▼</span>
+        </summary>
+        <div class="control-group-body">
+          <div class="control-field">
+            <label for="input-advance-price" class="control-label">Adelanto / Abono ($)</label>
+            <input type="text" id="input-advance-price" class="form-input" placeholder="Ej: 100$" value="100$">
+          </div>
+        </div>
+      </details>
+
+      <!-- Sección 6: Datos del Pie de Página -->
+      <details class="control-group">
+        <summary class="control-group-title">
+          <span>🏢 Pie de Página (Footer)</span>
+          <span class="accordion-icon">▼</span>
+        </summary>
+        <div class="control-group-body">
+          <div class="control-field">
+            <label for="input-footer-address" class="control-label">Dirección Empresa</label>
+            <input type="text" id="input-footer-address" class="form-input" value="Caracas, San Agustín Norte, Calle Sur, casa 160.">
+          </div>
+
+          <div class="control-field">
+            <label for="input-footer-phone" class="control-label">Teléfono</label>
+            <input type="text" id="input-footer-phone" class="form-input" value="Telf. 0412-321-4014">
+          </div>
+
+          <div class="control-field">
+            <label for="input-footer-name" class="control-label">Nombre del Responsable</label>
+            <input type="text" id="input-footer-name" class="form-input" value="Juan Carlos Meléndez">
+          </div>
+        </div>
+      </details>
+
+
+    </aside>
+
+    <!-- LADO DERECHO: Vista Previa del PDF (Hojas A4 Paginadas) -->
+    <main class="preview-area">
+      <!-- Contenedor dinámico de Hojas PDF (10 productos por página) -->
+      <div id="pdf-pages-container" class="pdf-pages-container">
+        <!-- Renderizado dinámico desde app.js -->
+      </div>
+    </main>
+
+  </div>
+
+  <!-- JavaScript Modular -->
+  <script src="js/app.js"></script>
+</body>
+</html>
