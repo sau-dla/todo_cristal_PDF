@@ -175,18 +175,65 @@ document.addEventListener('DOMContentLoaded', () => {
      4. RENDERIZADO DE HOJAS PDF
      -------------------------------------------------------------------------- */
 
+  function getItemWeight(item) {
+    if (!item) return 1;
+    const nameStr = (item.productName || '') + ' ' + (item.dimensions || '');
+    const titleLines = Math.max(1, Math.ceil(nameStr.length / 38));
+
+    let detailsLines = 0;
+    if (item.details && item.details.trim()) {
+      const detailParts = item.details.split('\n');
+      detailParts.forEach(part => {
+        detailsLines += Math.max(1, Math.ceil(part.length / 42));
+      });
+    }
+
+    const totalLines = titleLines + detailsLines;
+    return 1 + (totalLines - 1) * 0.55;
+  }
+
+  function calculatePageChunks(lines) {
+    if (!lines || lines.length === 0) return [[]];
+
+    const MAX_PAGE_WEIGHT = 9.5;
+    const MAX_LAST_PAGE_WEIGHT = 7.5;
+
+    const chunks = [];
+    let currentChunk = [];
+    let currentWeight = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const item = lines[i];
+      const weight = getItemWeight(item);
+
+      if (currentChunk.length > 0 && (currentWeight + weight > MAX_PAGE_WEIGHT)) {
+        chunks.push(currentChunk);
+        currentChunk = [item];
+        currentWeight = weight;
+      } else {
+        currentChunk.push(item);
+        currentWeight += weight;
+      }
+    }
+
+    if (currentChunk.length > 0) {
+      if (currentChunk.length > 1 && currentWeight > MAX_LAST_PAGE_WEIGHT) {
+        const lastItem = currentChunk.pop();
+        chunks.push(currentChunk);
+        chunks.push([lastItem]);
+      } else {
+        chunks.push(currentChunk);
+      }
+    }
+
+    return chunks;
+  }
+
   function renderPdfPages() {
     if (!pdfPagesContainer) return;
     pdfPagesContainer.innerHTML = '';
 
-    const pageChunks = [];
-    if (lines.length === 0) {
-      pageChunks.push([]);
-    } else {
-      for (let i = 0; i < lines.length; i += ITEMS_PER_PAGE) {
-        pageChunks.push(lines.slice(i, i + ITEMS_PER_PAGE));
-      }
-    }
+    const pageChunks = calculatePageChunks(lines);
 
     const totalPages = pageChunks.length;
     const formattedTotal = calculateBudgetTotal();
@@ -195,6 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (itemsCountBadge) {
       itemsCountBadge.textContent = `${lines.length} producto${lines.length === 1 ? '' : 's'} (${totalPages} hoja${totalPages === 1 ? '' : 's'})`;
     }
+
+    let cumulativeItemIndex = 0;
 
     pageChunks.forEach((chunk, pageIndex) => {
       const currentPageNum = pageIndex + 1;
@@ -221,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
       } else {
         chunk.forEach((item, itemIdxInChunk) => {
-          const globalIndex = pageIndex * ITEMS_PER_PAGE + itemIdxInChunk;
+          const globalIndex = cumulativeItemIndex + itemIdxInChunk;
           const descNameHtml = `<span class="product-name-line" contenteditable="true" data-type="nameLine" data-index="${globalIndex}" data-placeholder="Nombre del producto">${item.productName || ''}</span>`;
           const descDimHtml = `<span class="product-dim-line" contenteditable="true" data-type="dimLine" data-index="${globalIndex}" data-placeholder="medidas">${item.dimensions || ''}</span>`;
           const descSubHtml = `<div class="product-details-sub" contenteditable="true" data-type="details" data-index="${globalIndex}" data-placeholder="descripción">${item.details || ''}</div>`;
@@ -248,6 +297,8 @@ document.addEventListener('DOMContentLoaded', () => {
           `;
         });
       }
+
+      cumulativeItemIndex += chunk.length;
 
       const logoWidth = Math.round((95 * config.logoSize) / 100);
       const logoOpacity = (config.logoOpacity / 100).toString();
