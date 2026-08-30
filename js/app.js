@@ -175,205 +175,246 @@ document.addEventListener('DOMContentLoaded', () => {
      4. RENDERIZADO DE HOJAS PDF
      -------------------------------------------------------------------------- */
 
-  function getItemWeight(item) {
-    if (!item) return 1;
-    const nameStr = (item.productName || '') + ' ' + (item.dimensions || '');
-    const titleLines = Math.max(1, Math.ceil(nameStr.length / 38));
+  function buildRowHtml(item, globalIndex) {
+    const descNameHtml = `<span class="product-name-line" contenteditable="true" data-type="nameLine" data-index="${globalIndex}" data-placeholder="Nombre del producto">${item.productName || ''}</span>`;
+    const descDimHtml = `<span class="product-dim-line" contenteditable="true" data-type="dimLine" data-index="${globalIndex}" data-placeholder="medidas">${item.dimensions || ''}</span>`;
+    const descSubHtml = `<div class="product-details-sub" contenteditable="true" data-type="details" data-index="${globalIndex}" data-placeholder="descripción">${item.details || ''}</div>`;
 
+    const qtyText = formatQuantity(item.quantity);
+    const unitText = formatCurrencyRight(item.unitPrice);
+    const calculatedLineTotal = calculateLineTotal(item.quantity, item.unitPrice);
+    const totalText = calculatedLineTotal ? calculatedLineTotal : (item.lineTotal ? formatCurrencyRight(item.lineTotal) : '0,00$');
+
+    return `
+      <td class="td-desc">
+        <button type="button" class="pdf-line-delete-btn" data-index="${globalIndex}" title="Eliminar ítem">✕</button>
+        <div class="product-title-row" style="display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap;">
+          ${descNameHtml}
+          ${descDimHtml}
+        </div>
+        ${descSubHtml}
+      </td>
+      <td class="td-qty" contenteditable="true" data-type="qty" data-index="${globalIndex}">${qtyText}</td>
+      <td class="td-unit" contenteditable="true" data-type="unit" data-index="${globalIndex}">${unitText}</td>
+      <td class="td-total" data-type="total" data-index="${globalIndex}">${totalText}</td>
+    `;
+  }
+
+  function calculateRealItemLines(item) {
+    if (!item) return 1;
+
+    // 1. Nombre del producto + medidas
+    const nameStr = ((item.productName || '') + (item.dimensions ? ' ' + item.dimensions : '')).trim();
+    let titleLines = 1;
+    if (nameStr) {
+      titleLines = Math.max(1, Math.ceil(nameStr.length / 36));
+    }
+
+    // 2. Descripción multilínea
     let detailsLines = 0;
     if (item.details && item.details.trim()) {
       const detailParts = item.details.split('\n');
       detailParts.forEach(part => {
-        detailsLines += Math.max(1, Math.ceil(part.length / 42));
+        detailsLines += Math.max(1, Math.ceil(part.length / 38));
       });
+    } else {
+      detailsLines = 1;
     }
 
-    const totalLines = titleLines + detailsLines;
-    return 1 + (totalLines - 1) * 0.55;
+    return titleLines + detailsLines;
   }
 
-  function calculatePageChunks(lines) {
-    if (!lines || lines.length === 0) return [[]];
+  function calculateItemPixelHeight(item) {
+    const linesCount = calculateRealItemLines(item);
+    return 24 + (linesCount - 1) * 18;
+  }
 
-    const MAX_PAGE_WEIGHT = 9.5;
-    const MAX_LAST_PAGE_WEIGHT = 7.5;
+  function createNewPageDiv(pageIndex) {
+    const isFirstPage = (pageIndex === 0);
+    const pageDiv = document.createElement('div');
+    pageDiv.className = 'pdf-page';
+    pageDiv.style.fontFamily = config.fontFamily;
+    pageDiv.style.fontSize = `${config.fontSize}px`;
+    pageDiv.style.color = config.fontColor;
 
-    const chunks = [];
-    let currentChunk = [];
-    let currentWeight = 0;
+    const watermarkOpacity = (config.watermarkOpacity / 100).toString();
+    const watermarkWidth = Math.round((280 * config.watermarkSize) / 100);
+    const dateFormatted = formatDateToSpanish(budgetData.dateYMD);
+    const logoWidth = Math.round((95 * config.logoSize) / 100);
+    const logoOpacity = (config.logoOpacity / 100).toString();
 
-    for (let i = 0; i < lines.length; i++) {
-      const item = lines[i];
-      const weight = getItemWeight(item);
+    pageDiv.innerHTML = `
+      <div class="watermark-container" style="opacity: ${watermarkOpacity};">
+        <img src="${config.customLogoSrc}" alt="TC Watermark" class="watermark-logo" style="width: ${watermarkWidth}px;">
+        <div class="watermark-text">TODO CRISTAL</div>
+      </div>
+      <div class="pdf-header-row">
+        <div class="pdf-logo-wrapper">
+          <img src="${config.customLogoSrc}" alt="Todo Cristal Logo" style="width: ${logoWidth}px; opacity: ${logoOpacity};">
+        </div>
+        <div class="pdf-brand-title">TODO CRISTAL</div>
+      </div>
+      <div class="pdf-meta-fields">
+        <div class="pdf-field-line" style="position: relative;">
+          <span class="field-label-bold">FECHA:</span>
+          <span class="field-underline canvas-date-trigger" style="cursor: pointer;" title="Haz clic para abrir el calendario">${dateFormatted}</span>
+          ${isFirstPage ? `<input type="date" class="canvas-date-picker-input" value="${budgetData.dateYMD}" style="position: absolute; top: 100%; left: 70px; width: 180px; height: 1px; opacity: 0; border: none; padding: 0; margin: 0; pointer-events: auto;">` : ''}
+        </div>
+        <div class="pdf-field-line">
+          <span class="field-label-bold">PRESUPUESTO SR(a):</span>
+          <span class="field-underline field-client-editable" contenteditable="true">${budgetData.client}</span>
+        </div>
+        <div class="pdf-field-line">
+          <span class="field-label-bold">C.I:</span>
+          <span class="field-underline field-ci-editable" contenteditable="true">${budgetData.ci}</span>
+        </div>
+        <div class="pdf-field-line">
+          <span class="field-label-bold">DIRECCIÓN:</span>
+          <span class="field-underline field-address-editable" contenteditable="true">${budgetData.address}</span>
+        </div>
+      </div>
+      <div class="pdf-content-body">
+        ${isFirstPage ? `<div class="pdf-main-title-above field-maintitle-editable" contenteditable="true">${budgetData.mainTitle || ''}</div>` : ''}
+        <div class="pdf-lines-wrapper">
+          <table class="pdf-table">
+            <thead>
+              <tr>
+                <th class="th-desc">Productos</th>
+                <th class="th-qty">Cantidad</th>
+                <th class="th-unit">Precio Unitario</th>
+                <th class="th-total" style="position: relative;">
+                  Importe
+                  <button type="button" class="pdf-header-add-btn" title="Agregar producto">+</button>
+                </th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="pdf-footer-centered">
+        <div class="footer-line field-footeraddress-editable" contenteditable="true">${budgetData.footerAddress}</div>
+        <div class="footer-line field-footerphone-editable" contenteditable="true">${budgetData.footerPhone}</div>
+        <div class="footer-line field-footername-editable" contenteditable="true">${budgetData.footerName}</div>
+      </div>
+    `;
 
-      if (currentChunk.length > 0 && (currentWeight + weight > MAX_PAGE_WEIGHT)) {
-        chunks.push(currentChunk);
-        currentChunk = [item];
-        currentWeight = weight;
-      } else {
-        currentChunk.push(item);
-        currentWeight += weight;
-      }
-    }
-
-    if (currentChunk.length > 0) {
-      if (currentChunk.length > 1 && currentWeight > MAX_LAST_PAGE_WEIGHT) {
-        const lastItem = currentChunk.pop();
-        chunks.push(currentChunk);
-        chunks.push([lastItem]);
-      } else {
-        chunks.push(currentChunk);
-      }
-    }
-
-    return chunks;
+    return pageDiv;
   }
 
   function renderPdfPages() {
     if (!pdfPagesContainer) return;
     pdfPagesContainer.innerHTML = '';
 
-    const pageChunks = calculatePageChunks(lines);
+    if (!lines || lines.length === 0) {
+      const pageDiv = createNewPageDiv(0);
+      const tbody = pageDiv.querySelector('tbody');
+      tbody.innerHTML = `
+        <tr class="pdf-table-row">
+          <td colspan="4" style="text-align: center; color: #94a3b8; padding: 1.5rem 0.5rem; font-style: italic;">
+            Sin productos agregados. Haz clic en el botón ➕ al lado del Importe para agregar.
+          </td>
+        </tr>
+      `;
+      pdfPagesContainer.appendChild(pageDiv);
+      if (itemsCountBadge) itemsCountBadge.textContent = '0 productos (1 hoja)';
+      bindPageEvents();
+      return;
+    }
 
-    const totalPages = pageChunks.length;
+    const pages = [];
+    let currentPageIdx = 0;
+    let currentPageDiv = createNewPageDiv(currentPageIdx);
+    pdfPagesContainer.appendChild(currentPageDiv);
+    pages.push(currentPageDiv);
+
+    let tbody = currentPageDiv.querySelector('tbody');
+    let itemsInCurrentPage = 0;
+    let currentTableHeight = 0;
+
+    const MAX_NORMAL_PAGE_HEIGHT = 490;
+    const MAX_LAST_PAGE_HEIGHT = 310;
+
+    for (let i = 0; i < lines.length; i++) {
+      const item = lines[i];
+      const itemHeight = calculateItemPixelHeight(item);
+      const isMultiLine = (calculateRealItemLines(item) > 2);
+
+      const willOverflowNormal = (currentTableHeight + itemHeight > MAX_NORMAL_PAGE_HEIGHT);
+      const willOverflowTrailingMultiLine = (itemsInCurrentPage > 0 && isMultiLine && (currentTableHeight + itemHeight > 420));
+
+      if (itemsInCurrentPage > 0 && (willOverflowNormal || willOverflowTrailingMultiLine)) {
+        currentPageIdx++;
+        currentPageDiv = createNewPageDiv(currentPageIdx);
+        pdfPagesContainer.appendChild(currentPageDiv);
+        pages.push(currentPageDiv);
+
+        tbody = currentPageDiv.querySelector('tbody');
+        itemsInCurrentPage = 0;
+        currentTableHeight = 0;
+      }
+
+      const tr = document.createElement('tr');
+      tr.className = 'pdf-table-row';
+      tr.innerHTML = buildRowHtml(item, i);
+      tbody.appendChild(tr);
+
+      itemsInCurrentPage++;
+      currentTableHeight += itemHeight;
+    }
+
+    // Comprobar la ÚLTIMA página para garantizar espacio al Cuadro de Totales + Abono
+    const lastPageDiv = pages[pages.length - 1];
+    const lastTbody = lastPageDiv.querySelector('tbody');
+    const lastTr = lastTbody ? lastTbody.lastElementChild : null;
+
+    if (lastTr && lastTbody.children.length > 1 && currentTableHeight > MAX_LAST_PAGE_HEIGHT) {
+      lastTbody.removeChild(lastTr);
+
+      currentPageIdx++;
+      const finalPageDiv = createNewPageDiv(currentPageIdx);
+      pdfPagesContainer.appendChild(finalPageDiv);
+      pages.push(finalPageDiv);
+
+      const finalTbody = finalPageDiv.querySelector('tbody');
+      finalTbody.appendChild(lastTr);
+    }
+
+    // Insertar Cuadro de Totales + Abono en la página final que le corresponde
+    const actualLastPageDiv = pages[pages.length - 1];
     const formattedTotal = calculateBudgetTotal();
-    const dateFormatted = formatDateToSpanish(budgetData.dateYMD);
+    const totalsHtml = `
+      <div class="pdf-totals-box-right">
+        <div class="totals-box-row">
+          <span class="totals-label">Costo total:</span>
+          <span class="totals-value-readonly field-totalprice-readonly">${formattedTotal}</span>
+        </div>
+        <div class="totals-box-row totals-box-highlight">
+          <span class="totals-label">Abono:</span>
+          <span class="totals-value-editable field-advanceprice-editable" contenteditable="true">${formatCurrencyRight(budgetData.advancePrice)}</span>
+        </div>
+      </div>
+    `;
+
+    const lastPageFooter = actualLastPageDiv.querySelector('.pdf-footer-centered');
+    lastPageFooter.insertAdjacentHTML('beforebegin', totalsHtml);
+
+    // Agregar números de página e información del badge
+    const totalPages = pages.length;
+    pages.forEach((pDiv, idx) => {
+      const pageNum = idx + 1;
+      if (totalPages > 1) {
+        const pageNumDiv = document.createElement('div');
+        pageNumDiv.className = 'pdf-page-number';
+        pageNumDiv.textContent = `Página ${pageNum} de ${totalPages}`;
+        const footer = pDiv.querySelector('.pdf-footer-centered');
+        footer.insertAdjacentElement('afterend', pageNumDiv);
+      }
+    });
 
     if (itemsCountBadge) {
       itemsCountBadge.textContent = `${lines.length} producto${lines.length === 1 ? '' : 's'} (${totalPages} hoja${totalPages === 1 ? '' : 's'})`;
     }
-
-    let cumulativeItemIndex = 0;
-
-    pageChunks.forEach((chunk, pageIndex) => {
-      const currentPageNum = pageIndex + 1;
-      const isFirstPage = (pageIndex === 0);
-      const isLastPage = (pageIndex === totalPages - 1);
-
-      const pageDiv = document.createElement('div');
-      pageDiv.className = 'pdf-page';
-      pageDiv.style.fontFamily = config.fontFamily;
-      pageDiv.style.fontSize = `${config.fontSize}px`;
-      pageDiv.style.color = config.fontColor;
-
-      const watermarkOpacity = (config.watermarkOpacity / 100).toString();
-      const watermarkWidth = Math.round((280 * config.watermarkSize) / 100);
-
-      let tableRowsHtml = '';
-      if (chunk.length === 0) {
-        tableRowsHtml = `
-          <tr class="pdf-table-row">
-            <td colspan="4" style="text-align: center; color: #94a3b8; padding: 1.5rem 0.5rem; font-style: italic;">
-              Sin productos agregados. Haz clic en el botón ➕ al lado del Importe para agregar.
-            </td>
-          </tr>
-        `;
-      } else {
-        chunk.forEach((item, itemIdxInChunk) => {
-          const globalIndex = cumulativeItemIndex + itemIdxInChunk;
-          const descNameHtml = `<span class="product-name-line" contenteditable="true" data-type="nameLine" data-index="${globalIndex}" data-placeholder="Nombre del producto">${item.productName || ''}</span>`;
-          const descDimHtml = `<span class="product-dim-line" contenteditable="true" data-type="dimLine" data-index="${globalIndex}" data-placeholder="medidas">${item.dimensions || ''}</span>`;
-          const descSubHtml = `<div class="product-details-sub" contenteditable="true" data-type="details" data-index="${globalIndex}" data-placeholder="descripción">${item.details || ''}</div>`;
-
-          const qtyText = formatQuantity(item.quantity);
-          const unitText = formatCurrencyRight(item.unitPrice);
-          const calculatedLineTotal = calculateLineTotal(item.quantity, item.unitPrice);
-          const totalText = calculatedLineTotal ? calculatedLineTotal : (item.lineTotal ? formatCurrencyRight(item.lineTotal) : '0,00$');
-
-          tableRowsHtml += `
-            <tr class="pdf-table-row">
-              <td class="td-desc">
-                <button type="button" class="pdf-line-delete-btn" data-index="${globalIndex}" title="Eliminar ítem">✕</button>
-                <div class="product-title-row" style="display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap;">
-                  ${descNameHtml}
-                  ${descDimHtml}
-                </div>
-                ${descSubHtml}
-              </td>
-              <td class="td-qty" contenteditable="true" data-type="qty" data-index="${globalIndex}">${qtyText}</td>
-              <td class="td-unit" contenteditable="true" data-type="unit" data-index="${globalIndex}">${unitText}</td>
-              <td class="td-total" data-type="total" data-index="${globalIndex}">${totalText}</td>
-            </tr>
-          `;
-        });
-      }
-
-      cumulativeItemIndex += chunk.length;
-
-      const logoWidth = Math.round((95 * config.logoSize) / 100);
-      const logoOpacity = (config.logoOpacity / 100).toString();
-
-      pageDiv.innerHTML = `
-        <div class="watermark-container" style="opacity: ${watermarkOpacity};">
-          <img src="${config.customLogoSrc}" alt="TC Watermark" class="watermark-logo" style="width: ${watermarkWidth}px;">
-          <div class="watermark-text">TODO CRISTAL</div>
-        </div>
-        <div class="pdf-header-row">
-          <div class="pdf-logo-wrapper">
-            <img src="${config.customLogoSrc}" alt="Todo Cristal Logo" style="width: ${logoWidth}px; opacity: ${logoOpacity};">
-          </div>
-          <div class="pdf-brand-title">TODO CRISTAL</div>
-        </div>
-        <div class="pdf-meta-fields">
-          <div class="pdf-field-line" style="position: relative;">
-            <span class="field-label-bold">FECHA:</span>
-            <span class="field-underline canvas-date-trigger" style="cursor: pointer;" title="Haz clic para abrir el calendario">${dateFormatted}</span>
-            ${isFirstPage ? `<input type="date" class="canvas-date-picker-input" value="${budgetData.dateYMD}" style="position: absolute; top: 100%; left: 70px; width: 180px; height: 1px; opacity: 0; border: none; padding: 0; margin: 0; pointer-events: auto;">` : ''}
-          </div>
-          <div class="pdf-field-line">
-            <span class="field-label-bold">PRESUPUESTO SR(a):</span>
-            <span class="field-underline field-client-editable" contenteditable="true">${budgetData.client}</span>
-          </div>
-          <div class="pdf-field-line">
-            <span class="field-label-bold">C.I:</span>
-            <span class="field-underline field-ci-editable" contenteditable="true">${budgetData.ci}</span>
-          </div>
-          <div class="pdf-field-line">
-            <span class="field-label-bold">DIRECCIÓN:</span>
-            <span class="field-underline field-address-editable" contenteditable="true">${budgetData.address}</span>
-          </div>
-        </div>
-        <div class="pdf-content-body">
-          ${isFirstPage ? `<div class="pdf-main-title-above field-maintitle-editable" contenteditable="true">${budgetData.mainTitle || ''}</div>` : ''}
-          <div class="pdf-lines-wrapper">
-            <table class="pdf-table">
-              <thead>
-                <tr>
-                  <th class="th-desc">Productos</th>
-                  <th class="th-qty">Cantidad</th>
-                  <th class="th-unit">Precio Unitario</th>
-                  <th class="th-total" style="position: relative;">
-                    Importe
-                    <button type="button" class="pdf-header-add-btn" title="Agregar producto">+</button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>${tableRowsHtml}</tbody>
-            </table>
-          </div>
-        </div>
-        ${isLastPage ? `
-        <div class="pdf-totals-box-right">
-          <div class="totals-box-row">
-            <span class="totals-label">Costo total:</span>
-            <span class="totals-value-readonly field-totalprice-readonly">${formattedTotal}</span>
-          </div>
-          <div class="totals-box-row totals-box-highlight">
-            <span class="totals-label">Abono:</span>
-            <span class="totals-value-editable field-advanceprice-editable" contenteditable="true">${formatCurrencyRight(budgetData.advancePrice)}</span>
-          </div>
-        </div>
-        ` : ''}
-        ${totalPages > 1 ? `<div class="pdf-page-number">Página ${currentPageNum} de ${totalPages}</div>` : ''}
-        <div class="pdf-footer-centered">
-          <div class="footer-line field-footeraddress-editable" contenteditable="true">${budgetData.footerAddress}</div>
-          <div class="footer-line field-footerphone-editable" contenteditable="true">${budgetData.footerPhone}</div>
-          <div class="footer-line field-footername-editable" contenteditable="true">${budgetData.footerName}</div>
-        </div>
-      `;
-
-      pdfPagesContainer.appendChild(pageDiv);
-    });
 
     bindPageEvents();
   }
@@ -460,6 +501,91 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+  function getCaretCharacterOffsetWithin(element) {
+    let caretOffset = 0;
+    try {
+      const doc = element.ownerDocument || element.document;
+      const win = doc.defaultView || doc.parentWindow;
+      const sel = win.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        const preCaretRange = range.cloneRange();
+        preCaretRange.selectNodeContents(element);
+        preCaretRange.setEnd(range.endContainer, range.endOffset);
+        caretOffset = preCaretRange.toString().length;
+      }
+    } catch (e) {}
+    return caretOffset;
+  }
+
+  function setCaretCharacterOffsetWithin(element, offset) {
+    if (!element) return;
+    try {
+      element.focus();
+      const doc = element.ownerDocument || element.document;
+      const win = doc.defaultView || doc.parentWindow;
+      const sel = win.getSelection();
+      if (!sel) return;
+
+      let charCount = 0;
+      const nodeStack = [element];
+      let node, found = false;
+
+      const range = doc.createRange();
+      range.setStart(element, 0);
+      range.collapse(true);
+
+      while (!found && (node = nodeStack.pop())) {
+        if (node.nodeType === 3) {
+          const nextCharCount = charCount + node.length;
+          if (offset <= nextCharCount) {
+            range.setStart(node, offset - charCount);
+            range.collapse(true);
+            found = true;
+          }
+          charCount = nextCharCount;
+        } else {
+          let i = node.childNodes.length;
+          while (i--) {
+            nodeStack.push(node.childNodes[i]);
+          }
+        }
+      }
+
+      if (found) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch (e) {}
+  }
+
+  let liveRenderTimer = null;
+
+  function scheduleLiveRender(activeElement) {
+    if (liveRenderTimer) clearTimeout(liveRenderTimer);
+
+    liveRenderTimer = setTimeout(() => {
+      let activeIdx = null;
+      let activeType = null;
+      let caretOffset = 0;
+
+      if (activeElement && activeElement.dataset) {
+        activeIdx = activeElement.dataset.index;
+        activeType = activeElement.dataset.type;
+        caretOffset = getCaretCharacterOffsetWithin(activeElement);
+      }
+
+      renderPdfPages();
+
+      if (activeIdx !== null && activeType !== null) {
+        const targetCell = pdfPagesContainer.querySelector(`[data-index="${activeIdx}"][data-type="${activeType}"]`);
+        if (targetCell) {
+          setCaretCharacterOffsetWithin(targetCell, caretOffset);
+        }
+      }
+    }, 150);
+  }
+
     const nameCells = pdfPagesContainer.querySelectorAll('.product-name-line[contenteditable="true"]');
     nameCells.forEach(cell => {
       cell.addEventListener('input', (e) => {
@@ -467,6 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lines[idx]) {
           lines[idx].productName = e.target.innerText;
           syncSidebarFromLine(idx);
+          scheduleLiveRender(e.target);
         }
       });
     });
@@ -478,6 +605,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lines[idx]) {
           lines[idx].dimensions = e.target.innerText;
           syncSidebarFromLine(idx);
+          scheduleLiveRender(e.target);
         }
       });
     });
@@ -489,6 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lines[idx]) {
           lines[idx].details = e.target.innerText;
           syncSidebarFromLine(idx);
+          scheduleLiveRender(e.target);
         }
       });
     });
