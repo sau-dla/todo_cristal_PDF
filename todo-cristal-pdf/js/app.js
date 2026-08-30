@@ -14,8 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const config = {
     logoSize: 100,
     logoOpacity: 100,
-    watermarkSize: 100,
-    watermarkOpacity: 15,
+    watermarkSize: 127,
+    watermarkOpacity: 5,
     fontFamily: "'Montserrat', sans-serif",
     fontSize: 14,
     fontColor: '#000000',
@@ -746,13 +746,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-            function downloadPDF() {
+  async function downloadPDF() {
     const clientClean = (budgetData.client || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_');
     const filename = 'Presupuesto_Todo_Cristal_' + clientClean + '.pdf';
 
     if (btnTopDownload) {
       btnTopDownload.innerHTML = '⌛ Generando PDF...';
       btnTopDownload.disabled = true;
+    }
+    if (btnDownloadPdf) {
+      btnDownloadPdf.innerHTML = '⌛ Generando PDF...';
+      btnDownloadPdf.disabled = true;
     }
 
     // 1. Ocultar botones interactivos (+ y ✕) e input de fecha flotante
@@ -763,7 +767,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const editables = pdfPagesContainer.querySelectorAll('[contenteditable]');
     editables.forEach(el => el.removeAttribute('contenteditable'));
 
-    const pageEls = pdfPagesContainer.querySelectorAll('.pdf-page');
+    const pageEls = Array.from(pdfPagesContainer.querySelectorAll('.pdf-page'));
 
     if (pageEls.length === 0) {
       actionBtns.forEach(btn => btn.style.display = '');
@@ -772,125 +776,87 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Si es 1 sola hoja, capturar la hoja ajustando temporalmente su altura a 295mm para evitar desbordamiento de 0.01mm
-    if (pageEls.length === 1) {
-      const pageEl = pageEls[0];
-      const origShadow = pageEl.style.boxShadow;
-      const origMargin = pageEl.style.margin;
-      const origHeight = pageEl.style.height;
-      const origMinHeight = pageEl.style.minHeight;
-      const origMaxHeight = pageEl.style.maxHeight;
-      const origZoom = pageEl.style.zoom;
+    // Guardar estilos originales
+    const originalStyles = pageEls.map(p => ({
+      el: p,
+      shadow: p.style.boxShadow,
+      margin: p.style.margin,
+      h: p.style.height,
+      minH: p.style.minHeight,
+      maxH: p.style.maxHeight,
+      zoom: p.style.zoom
+    }));
 
-      pageEl.style.boxShadow = 'none';
-      pageEl.style.margin = '0';
-      pageEl.style.height = '295mm';
-      pageEl.style.minHeight = '295mm';
-      pageEl.style.maxHeight = '295mm';
-      pageEl.style.zoom = '1';
+    // Ajustar estilos para la captura A4 limpia (295mm para evitar desbordamientos de 0.01mm por redondeo de píxeles)
+    pageEls.forEach(p => {
+      p.style.boxShadow = 'none';
+      p.style.margin = '0';
+      p.style.height = '295mm';
+      p.style.minHeight = '295mm';
+      p.style.maxHeight = '295mm';
+      p.style.zoom = '1';
+    });
 
-      const opt = {
-        margin: 0,
-        filename: filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          logging: false
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
-
-      html2pdf().set(opt).from(pageEl).save().then(() => {
-        pageEl.style.boxShadow = origShadow;
-        pageEl.style.margin = origMargin;
-        pageEl.style.height = origHeight;
-        pageEl.style.minHeight = origMinHeight;
-        pageEl.style.maxHeight = origMaxHeight;
-        pageEl.style.zoom = origZoom;
-        actionBtns.forEach(btn => btn.style.display = '');
-        editables.forEach(el => el.setAttribute('contenteditable', 'true'));
-        resetDownloadBtns();
-      }).catch(err => {
-        console.error('Error generando PDF:', err);
-        pageEl.style.boxShadow = origShadow;
-        pageEl.style.margin = origMargin;
-        pageEl.style.height = origHeight;
-        pageEl.style.minHeight = origMinHeight;
-        pageEl.style.maxHeight = origMaxHeight;
-        pageEl.style.zoom = origZoom;
-        actionBtns.forEach(btn => btn.style.display = '');
-        editables.forEach(el => el.setAttribute('contenteditable', 'true'));
-        resetDownloadBtns();
-      });
-    } else {
-      // Para múltiples hojas, procesar cada .pdf-page secuencialmente para garantizar paginación exacta 1:1 sin hojas en blanco
-      const originalStyles = [];
-      pageEls.forEach(p => {
-        originalStyles.push({
-          el: p,
-          shadow: p.style.boxShadow,
-          margin: p.style.margin,
-          h: p.style.height,
-          minH: p.style.minHeight,
-          maxH: p.style.maxHeight,
-          zoom: p.style.zoom
+    try {
+      const jsPDFLib = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+      if (typeof jsPDFLib === 'function' && typeof window.html2canvas === 'function') {
+        const pdf = new jsPDFLib({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
         });
-        p.style.boxShadow = 'none';
-        p.style.margin = '0';
-        p.style.height = '295mm';
-        p.style.minHeight = '295mm';
-        p.style.maxHeight = '295mm';
-        p.style.zoom = '1';
-      });
 
-      const opt = {
-        margin: 0,
-        filename: filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          logging: false
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
+        for (let i = 0; i < pageEls.length; i++) {
+          const canvas = await window.html2canvas(pageEls[i], {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            logging: false
+          });
+          const imgData = canvas.toDataURL('image/jpeg', 0.98);
+          if (i > 0) {
+            pdf.addPage('a4', 'portrait');
+          }
+          pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+        }
 
-      let worker = html2pdf().set(opt).from(pageEls[0]).toPdf();
-      for (let i = 1; i < pageEls.length; i++) {
-        worker = worker.get('pdf').then((pdf) => {
-          pdf.addPage();
-        }).from(pageEls[i]).toContainer().toCanvas().toPdf();
+        pdf.save(filename);
+      } else {
+        // Fallback usando html2pdf
+        const opt = {
+          margin: 0,
+          filename: filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, allowTaint: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        if (pageEls.length === 1) {
+          await html2pdf().set(opt).from(pageEls[0]).save();
+        } else {
+          let worker = html2pdf().set(opt).from(pageEls[0]).toPdf();
+          for (let i = 1; i < pageEls.length; i++) {
+            worker = worker.get('pdf').then((pdf) => {
+              pdf.addPage();
+            }).from(pageEls[i]).toContainer().toCanvas().toPdf();
+          }
+          await worker.save();
+        }
       }
-
-      worker.save().then(() => {
-        originalStyles.forEach(item => {
-          item.el.style.boxShadow = item.shadow;
-          item.el.style.margin = item.margin;
-          item.el.style.height = item.h;
-          item.el.style.minHeight = item.minH;
-          item.el.style.maxHeight = item.maxH;
-          item.el.style.zoom = item.zoom;
-        });
-        actionBtns.forEach(btn => btn.style.display = '');
-        editables.forEach(el => el.setAttribute('contenteditable', 'true'));
-        resetDownloadBtns();
-      }).catch(err => {
-        console.error('Error generando PDF:', err);
-        originalStyles.forEach(item => {
-          item.el.style.boxShadow = item.shadow;
-          item.el.style.margin = item.margin;
-          item.el.style.height = item.h;
-          item.el.style.minHeight = item.minH;
-          item.el.style.maxHeight = item.maxH;
-          item.el.style.zoom = item.zoom;
-        });
-        actionBtns.forEach(btn => btn.style.display = '');
-        editables.forEach(el => el.setAttribute('contenteditable', 'true'));
-        resetDownloadBtns();
+    } catch (err) {
+      console.error('Error generando PDF:', err);
+    } finally {
+      originalStyles.forEach(item => {
+        item.el.style.boxShadow = item.shadow;
+        item.el.style.margin = item.margin;
+        item.el.style.height = item.h;
+        item.el.style.minHeight = item.minH;
+        item.el.style.maxHeight = item.maxH;
+        item.el.style.zoom = item.zoom;
       });
+      actionBtns.forEach(btn => btn.style.display = '');
+      editables.forEach(el => el.setAttribute('contenteditable', 'true'));
+      resetDownloadBtns();
     }
   }
 
